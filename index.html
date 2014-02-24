@@ -3,8 +3,143 @@
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <title>GPX track test</title>
+<script type="text/javascript" src="http://code.jquery.com/jquery-latest.min.js"></script>
+<script type="text/javascript" src="https://maps.googleapis.com/maps/api/js?sensor=false"></script>
+<script type="text/javascript">
+var selectedTrack = -1;
+var data;
+var map;
+var currentPoint = -1;
+var firstPoint = null;
+var stopPlaying = false;
+var animation = null;
+var radie = [ 0, 128000, 64000, 32000, 16000, 8000, 4000, 2000, 1000, 500, 250, 125, 63, 31, 15, 8, 4 ];
+
+function uploadFile(droppedFiles){
+	 // add your files to the regular upload form
+	var uploadFormData = new FormData($("#yourregularuploadformId")[0]); 
+	if(droppedFiles.length > 0) { // checks if any files were dropped
+		for(f = 0; f < droppedFiles.length; f++) { // for-loop for each file dropped
+			uploadFormData.append("files[]",droppedFiles[f]);  // adding every file to the form so you could upload multiple files
+		}
+	}
+	// the final ajax call
+	$.ajax({
+		url : "parsePSXFile.php", // use your target
+		type : "POST",
+		data : uploadFormData,
+		cache : false,
+		contentType : false,
+		processData : false,
+		success : function(ret) {
+			$("#selectTrack")[0].options.length = 1;
+			for (i in ret) {
+				$("#selectTrack")[0].options.add (new Option (ret[i].name, i));
+			}
+			data = ret;
+		}
+	});
+}
+
+function initialize() {
+	var mapOptions = {
+		center: new google.maps.LatLng(-34.397, 150.644),
+		streetViewControl: false,
+		rotateControl: false,
+		panControl: false,
+		zoom: 8
+	};
+	map = new google.maps.Map(document.getElementById("map-canvas"), mapOptions);
+}
+
+$(function() {
+	initialize();
+	var dropZone = $('#map-canvas')[0];
+	dropZone.addEventListener('dragover', handleDragOver, false);
+	dropZone.addEventListener('drop', handleFileSelect, false);
+	$("#selectTrack").change (changeTrack);
+	$('input[value="start"]').click (function () { stopPlaying = false; playTrack(); });
+	$('input[value="stop"]').click (function () { stopPlaying = true; currentPoint = -1; });
+});
+
+function changeTrack () {
+	selectedTrack = $(this).context.options[$(this).context.selectedIndex].value;
+	var lat=0; var lon=0;
+	for (i in data[selectedTrack].points) {
+		lat+= data[selectedTrack].points[i].lat*1;
+		lon+= data[selectedTrack].points[i].lon*1;
+	}
+	lat /= data[selectedTrack].points.length;
+	lon /= data[selectedTrack].points.length;
+	var center = new google.maps.LatLng(lat, lon);
+	map.setCenter (center);
+}
+
+function handleFileSelect(evt) {
+	evt.stopPropagation();
+	evt.preventDefault();
+	
+	var files = evt.dataTransfer.files; // FileList object.
+	uploadFile(files);
+}
+
+function handleDragOver(evt) {
+	evt.stopPropagation();
+	evt.preventDefault();
+	evt.dataTransfer.dropEffect = 'copy'; // Explicitly show this is a copy.
+}
+
+function playTrack () {
+	currentPoint++;
+	if (currentPoint==data[selectedTrack].points.length) {
+		if (firstPoint!=null)
+			firstPoint.setMap(null);
+			firstPoint = null;
+			return;
+	}
+	if (firstPoint==null) {
+		var options = {
+				strokeColor: '#33DD33',
+				strokeOpacity: 0.8,
+				strokeWeight: 2,
+				fillcolor: '#33DD33',
+				fillOpacity: 0.35,
+				map: map, 
+				center: new google.maps.LatLng(data[selectedTrack].points[currentPoint].lat, data[selectedTrack].points[currentPoint].lon),
+				radius: radie[map.getZoom()]
+		};
+		firstPoint = new google.maps.Circle(options);
+	} else
+		firstPoint.setCenter (new google.maps.LatLng(data[selectedTrack].points[currentPoint].lat, data[selectedTrack].points[currentPoint].lon));
+	$("output").html ("lat: "+data[selectedTrack].points[currentPoint].lat+"<br/>lon: "+data[selectedTrack].points[currentPoint].lon)
+	var desc = data[selectedTrack].points[currentPoint].desc;
+	var parts = desc.split(", ");
+	var alt = parts[2].substring (1);
+	alt = alt.split(" ");
+	var speed = alt[1].split("=")[1].substring (0, 8)*1;
+	alt = alt[0].split("=")[1].substring (0, 8)*1;
+	$("output").append ("<br/>Altitude: "+alt+"<br/>"+"Speed: "+speed);
+	if (!stopPlaying) {
+		animation = window.setTimeout (playTrack, 500);
+	} else {
+		firstPoint.setMap (null);
+		firstPoint = null;
+	}
+		
+}
+
+</script>
+<style type="text/css">
+#map-canvas {
+	height: 500px;
+	width: 500px;
+}
+</style>
 </head>
 <body>
-
+<div id="map-canvas"></div>
+<output style="float: left" id="list"></output><br clear="both"/>
+<select id="selectTrack"><option value="-1">Select track</option></select><br/>
+<input type="button" value="start"/> <input type="button" value="pause"/> <input type="button" value="stop"/>
 </body>
 </html>
